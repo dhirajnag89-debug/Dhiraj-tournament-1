@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Zenith Admin</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script>window.firebase||document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"><\/script>')</script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script>window.firebase&&firebase.auth||document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-auth-compat.min.js"><\/script>')</script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>window.firebase&&firebase.firestore||document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-firestore-compat.min.js"><\/script>')</script>
+<script>if(!window.firebase||!firebase.firestore)document.write('<div style="padding:24px;font:600 15px system-ui;color:#ff5d73">Firebase could not load. Open this page from your website or a normal browser with internet.</div>')</script>
+<style>
+:root{--bg:#0b0c13;--pan:#141623;--pan2:#1b1e2e;--line:#272b40;--tx:#eceef7;--mut:#8b91ad;--gold:#f5b335;--teal:#2fd3b5;--rose:#ff5d73}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:600 14px system-ui,sans-serif;padding-bottom:80px}
+button{font:inherit;border:0;cursor:pointer;color:inherit}.hidden{display:none!important}.mut{color:var(--mut)}
+.card{background:var(--pan);border:1px solid var(--line);border-radius:16px;padding:14px;margin:0 0 12px}
+.inp{width:100%;background:var(--pan2);border:1.5px solid var(--line);border-radius:12px;padding:12px;color:var(--tx);font:inherit;font-size:15px;outline:none}
+.btn{background:var(--gold);color:#1b1303;border-radius:12px;padding:10px 16px;font-weight:800}.btn:disabled{opacity:.5}
+.btn.t{background:var(--teal);color:#04241e}.btn.r{background:var(--rose);color:#fff}.btn.g{background:var(--pan2);border:1px solid var(--line)}
+.row{display:flex;gap:10px;align-items:center}.sp{justify-content:space-between}.f1{flex:1}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px;position:sticky;top:0;background:var(--bg);z-index:5}
+h1{font-size:20px;margin:0}main{padding:0 14px;max-width:720px;margin:0 auto}
+#tabs{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--pan);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+#tabs button{flex:1;background:none;padding:8px;color:var(--mut);font-size:12px}#tabs button.on{color:var(--gold)}#tabs span{display:block;font-size:20px}
+.bd{font-size:11px;padding:3px 9px;border-radius:99px;background:var(--pan2)}.big{font-size:24px;font-weight:800}
+#toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 18px;border-radius:99px;z-index:50}
+#login{min-height:100vh;display:grid;place-items:center;padding:18px}
+</style></head><body>
+<div id="login" class="hidden"><div class="card" style="width:100%;max-width:380px;padding:24px">
+<h1>Zenith Admin</h1><p class="mut">Sign in with the admin email</p>
+<input id="em" class="inp" type="email" placeholder="Admin email" style="margin-bottom:10px">
+<input id="pw" class="inp" type="password" placeholder="Password" style="margin-bottom:10px" onkeydown="if(event.key==='Enter')doLogin()">
+<div id="lerr" style="color:var(--rose);margin-bottom:8px"></div>
+<button id="lbtn" class="btn" style="width:100%" onclick="doLogin()">Sign in</button></div></div>
+<div id="app" class="hidden">
+<header><h1 id="title"></h1><button class="btn g" onclick="auth.signOut()">Logout</button></header>
+<main id="view"></main>
+<nav id="tabs">
+<button data-p="deposits" onclick="go('deposits')"><span>💳</span>Deposits <b id="b1"></b></button>
+<button data-p="withdrawals" onclick="go('withdrawals')"><span>💸</span>Withdrawals <b id="b2"></b></button>
+<button data-p="users" onclick="go('users')"><span>👥</span>Users</button>
+</nav></div>
+<div id="toast" class="hidden"></div>
+<script>
+const firebaseConfig={apiKey:"AIzaSyAu94tpXh_JqR7ZiAJr0ebA3XAkvplrHnQ",authDomain:"dhiraj-tournament.firebaseapp.com",projectId:"dhiraj-tournament",storageBucket:"dhiraj-tournament.firebasestorage.app",messagingSenderId:"86164647923",appId:"1:86164647923:web:ecaaf5c5ca19f51fb3ec86"};
+firebase.initializeApp(firebaseConfig);
+const auth=firebase.auth(),db=firebase.firestore(),FV=firebase.firestore.FieldValue;
+const ADMIN="dhirajnag36@gmail.com";
+const $=i=>document.getElementById(i),col=n=>db.collection(n);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const inr=n=>"₹"+(+n||0).toLocaleString("en-IN");
+const when=t=>{const d=t&&t.toDate?t.toDate():null;return d?d.toLocaleString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""};
+const toast=m=>{const t=$("toast");t.textContent=m;t.classList.remove("hidden");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.add("hidden"),2600)};
+let page="deposits",unsubs=[],pageUns=[],F={deposits:"pending",withdrawals:"pending"},DATA={deposits:[],withdrawals:[],users:[]},Q="";
+
+async function doLogin(){const b=$("lbtn");b.disabled=true;$("lerr").textContent="";
+ try{await auth.signInWithEmailAndPassword($("em").value.trim(),$("pw").value)}
+ catch(e){$("lerr").textContent=/wrong-password|invalid-credential|user-not-found/.test(e.code)?"Wrong email or password.":e.message}
+ b.disabled=false}
+auth.onAuthStateChanged(u=>{$("login").classList.add("hidden");$("app").classList.add("hidden");unsubs.forEach(f=>f());unsubs=[];
+ if(!u){$("login").classList.remove("hidden");return}
+ if(u.email!==ADMIN){toast("Not an admin account");auth.signOut();return}
+ $("app").classList.remove("hidden");
+ [["depositRequests","b1"],["withdrawRequests","b2"]].forEach(([c,b])=>unsubs.push(col(c).where("status","==","pending").onSnapshot(s=>{$(b).textContent=s.size?"("+s.size+")":""},()=>{})));
+ go(location.hash.slice(1)||"deposits")});
+
+function go(p){if(!["deposits","withdrawals","users"].includes(p))p="deposits";page=p;location.hash=p;pageUns.forEach(f=>f());pageUns=[];
+ document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.p===p));
+ $("title").textContent={deposits:"Deposits",withdrawals:"Withdrawals",users:"Users"}[p];
+ const src={deposits:col("depositRequests").orderBy("ts","desc").limit(100),withdrawals:col("withdrawRequests").orderBy("ts","desc").limit(100),users:col("users").limit(300)}[p];
+ pageUns.push(src.onSnapshot(s=>{DATA[p]=s.docs.map(d=>({id:d.id,...d.data()}));render()},e=>toast("Load error: "+e.code)))}
+
+function render(){if(page==="users")return renderUsers();
+ const L=DATA[page],f=F[page],isD=page==="deposits";
+ const chips=[["pending","Pending"],["approved","Approved"],["rejected","Rejected"],["","All"]].map(([v,l])=>`<button class="btn ${v===f?"":"g"}" style="padding:8px 14px;margin-right:6px" onclick="F[page]='${v}';render()">${l}</button>`).join("");
+ const items=L.filter(r=>!f||r.status===f).map(r=>{
+  const dup=isD&&L.filter(x=>x.utr===r.utr).length>1;
+  return `<div class="card"><div class="row sp"><div class="big">${inr(r.amount)}</div><span class="bd">${esc(r.status)}</span></div>
+  <div style="margin:6px 0"><b>${esc(r.username)}</b> <span class="mut">${when(r.ts)}</span></div>
+  <div class="mut" style="word-break:break-all">${isD?"UTR: "+esc(r.utr)+(dup?' <b style="color:var(--rose)">· duplicate UTR</b>':""):"UPI: "+esc(r.upi)+(r.kyc?" · KYC done":" · no KYC")}</div>
+  ${r.status==="pending"?`<div class="row" style="margin-top:10px"><button class="btn t f1" onclick="${isD?"approveDep":"approveWd"}('${r.id}',this)">Approve</button><button class="btn r f1" onclick="${isD?"rejectDep":"rejectWd"}('${r.id}',this)">Reject</button></div>`:""}</div>`}).join("");
+ $("view").innerHTML=`<div style="margin-bottom:12px;overflow-x:auto;white-space:nowrap">${chips}</div>`+(items||`<div class="card mut" style="text-align:center">Nothing here</div>`)}
+
+async function run(btn,fn,okMsg){btn.disabled=true;try{await fn();toast(okMsg)}catch(e){toast(e.message==="DONE"?"Already processed":"Failed: "+(e.code||e.message));btn.disabled=false}}
+
+function approveDep(id,btn){run(btn,()=>db.runTransaction(async tx=>{
+ const rRef=col("depositRequests").doc(id),r=await tx.get(rRef);if(!r.exists||r.data().status!=="pending")throw new Error("DONE");
+ const d=r.data(),a=+d.amount||0,uRef=col("users").doc(d.uid),u=await tx.get(uRef);if(!u.exists)throw new Error("User not found");
+ tx.update(uRef,{wallet:(+u.data().wallet||0)+a,totalAdded:(+u.data().totalAdded||0)+a});
+ tx.update(rRef,{status:"approved",processedAt:FV.serverTimestamp()});
+ tx.set(uRef.collection("transactions").doc(),{type:"deposit",amount:a,desc:"Deposit approved (UTR "+d.utr+")",ts:FV.serverTimestamp()});
+ tx.set(uRef.collection("notifications").doc(),{type:"deposit",text:"✅ "+inr(a)+" added to your wallet",read:false,ts:FV.serverTimestamp()})}),"Deposit approved")}
+function rejectDep(id,btn){run(btn,async()=>{const r=await col("depositRequests").doc(id).get();if(!r.exists||r.data().status!=="pending")throw new Error("DONE");
+ const b=db.batch();b.update(r.ref,{status:"rejected",processedAt:FV.serverTimestamp()});
+ b.set(col("users").doc(r.data().uid).collection("notifications").doc(),{type:"deposit",text:"❌ Deposit of "+inr(r.data().amount)+" could not be verified",read:false,ts:FV.serverTimestamp()});await b.commit()},"Deposit rejected")}
+
+function approveWd(id,btn){run(btn,()=>db.runTransaction(async tx=>{
+ const rRef=col("withdrawRequests").doc(id),r=await tx.get(rRef);if(!r.exists||r.data().status!=="pending")throw new Error("DONE");
+ const d=r.data(),a=+d.amount||0,uRef=col("users").doc(d.uid),u=await tx.get(uRef);
+ tx.update(uRef,{lockedBalance:Math.max(0,(+u.data().lockedBalance||0)-a)});
+ tx.update(rRef,{status:"approved",processedAt:FV.serverTimestamp()});
+ tx.set(uRef.collection("notifications").doc(),{type:"withdraw",text:"✅ "+inr(a)+" sent to "+d.upi,read:false,ts:FV.serverTimestamp()})}),"Marked paid")}
+function rejectWd(id,btn){run(btn,()=>db.runTransaction(async tx=>{
+ const rRef=col("withdrawRequests").doc(id),r=await tx.get(rRef);if(!r.exists||r.data().status!=="pending")throw new Error("DONE");
+ const d=r.data(),a=+d.amount||0,uRef=col("users").doc(d.uid),u=await tx.get(uRef);
+ tx.update(uRef,{wallet:(+u.data().wallet||0)+a,lockedBalance:Math.max(0,(+u.data().lockedBalance||0)-a)});
+ tx.update(rRef,{status:"rejected",processedAt:FV.serverTimestamp()});
+ tx.set(uRef.collection("notifications").doc(),{type:"withdraw",text:"❌ Withdrawal rejected, "+inr(a)+" returned to wallet",read:false,ts:FV.serverTimestamp()})}),"Rejected, refunded")}
+
+function renderUsers(){const q=Q.toLowerCase();
+ const L=DATA.users.filter(u=>!q||(u.username||"").toLowerCase().includes(q)||(u.email||"").toLowerCase().includes(q)).slice(0,60);
+ $("view").innerHTML=`<input class="inp" placeholder="Search name or email" value="${esc(Q)}" oninput="Q=this.value;renderUsers();this.focus()" style="margin-bottom:12px">`+
+ L.map(u=>`<div class="card"><div class="row sp"><b>${esc(u.username)}</b><span class="big" style="font-size:18px">${inr(u.wallet)}</span></div>
+ <div class="mut" style="word-break:break-all">${esc(u.email)}</div>
+ <div class="row" style="margin-top:10px"><button class="btn t f1" onclick="adj('${u.id}',1)">+ Add</button><button class="btn r f1" onclick="adj('${u.id}',-1)">− Deduct</button></div></div>`).join("")}
+async function adj(uid,sign){const v=prompt(sign>0?"Amount to add (₹)":"Amount to deduct (₹)");const a=Math.floor(+v);if(!a||a<=0)return;
+ try{await db.runTransaction(async tx=>{const uRef=col("users").doc(uid),u=await tx.get(uRef),w=(+u.data().wallet||0)+sign*a;if(w<0)throw new Error("Balance too low");
+  tx.update(uRef,{wallet:w});tx.set(uRef.collection("transactions").doc(),{type:sign>0?"bonus":"spent",amount:sign*a,desc:"Admin adjustment",ts:FV.serverTimestamp()});
+  tx.set(uRef.collection("notifications").doc(),{type:"bonus",text:(sign>0?"🎁 ":"")+inr(a)+(sign>0?" added to":" deducted from")+" your wallet by admin",read:false,ts:FV.serverTimestamp()})});toast("Wallet updated")}
+ catch(e){toast("Failed: "+(e.code||e.message))}}
+</script></body></html>
